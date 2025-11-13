@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cerebro 3D Interactivo</title>
+  <title>Cerebro 3D Interactivo (Android)</title>
   <style>
     body {
       margin: 0;
@@ -12,98 +12,81 @@
       touch-action: none;
     }
     canvas {
-      width: 100vw;
-      height: 100vh;
       display: block;
-    }
-    model-viewer {
       width: 100vw;
       height: 100vh;
-      background-color: #000;
     }
   </style>
 </head>
 <body>
-  <div id="viewer"></div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import { DragControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/DragControls.js';
 
-  <script>
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    // Escena, cámara y renderizador
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 5);
 
-    if (isIOS) {
-      // --- iPhone / iPad versión liviana ---
-      const mv = document.createElement('model-viewer');
-      mv.setAttribute('src', 'CEREBRO lite.glb');
-      mv.setAttribute('camera-controls', '');
-      mv.setAttribute('auto-rotate', '');
-      mv.setAttribute('exposure', '1');
-      mv.setAttribute('alt', 'Modelo 3D del cerebro');
-      mv.setAttribute('shadow-intensity', '1');
-      mv.setAttribute('interaction-prompt', 'none');
-      document.getElementById('viewer').appendChild(mv);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
 
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js';
-      document.head.appendChild(script);
-    } else {
-      // --- Android y PC: versión interactiva con Three.js ---
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.innerHTML = `
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-        import { DragControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/DragControls.js';
+    // Luces
+    const light = new THREE.DirectionalLight(0xffffff, 2);
+    light.position.set(5, 10, 7.5);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040, 2));
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        document.body.appendChild(renderer.domElement);
+    // Controles orbitales (rotar, zoom)
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
 
-        const light = new THREE.DirectionalLight(0xffffff, 2);
-        light.position.set(5, 10, 7.5);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040, 2));
+    // Cargar modelo GLB
+    const loader = new GLTFLoader();
+    let brain;
+    let originalPos = new THREE.Vector3();
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
+    loader.load('cerebro.glb', (gltf) => {
+      brain = gltf.scene;
+      brain.scale.set(1, 1, 1);
+      scene.add(brain);
+      originalPos.copy(brain.position);
 
-        const loader = new GLTFLoader();
-        let brain, originalPos = new THREE.Vector3();
+      // Activar controles de arrastre
+      const dragControls = new DragControls([brain], camera, renderer.domElement);
 
-        loader.load('cerebro.glb', (gltf) => {
-          brain = gltf.scene;
-          brain.scale.set(1, 1, 1);
-          scene.add(brain);
-          originalPos.copy(brain.position);
+      dragControls.addEventListener('dragstart', () => orbit.enabled = false);
+      dragControls.addEventListener('dragend', () => orbit.enabled = true);
 
-          const dragControls = new DragControls([brain], camera, renderer.domElement);
-          dragControls.addEventListener('dragstart', () => controls.enabled = false);
-          dragControls.addEventListener('dragend', () => controls.enabled = true);
-
-          renderer.domElement.addEventListener('dblclick', () => {
-            if (brain) brain.position.copy(originalPos);
-          });
-        });
-
-        camera.position.set(0, 0, 5);
-        window.addEventListener('resize', () => {
-          camera.aspect = window.innerWidth / window.innerHeight;
-          camera.updateProjectionMatrix();
-          renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        function animate() {
-          requestAnimationFrame(animate);
-          controls.update();
-          renderer.render(scene, camera);
+      // Restaurar posición con doble tap o doble clic
+      let lastTap = 0;
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        const now = Date.now();
+        if (now - lastTap < 300) { // doble toque/clic
+          brain.position.copy(originalPos);
         }
-        animate();
-      `;
-      document.body.appendChild(script);
+        lastTap = now;
+      });
+    });
+
+    // Redimensionar ventana
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animar
+    function animate() {
+      requestAnimationFrame(animate);
+      orbit.update();
+      renderer.render(scene, camera);
     }
+    animate();
   </script>
 </body>
 </html>
